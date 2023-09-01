@@ -13,6 +13,7 @@ static struct config {
     bool     latency;
     bool     dynamic;
     char    *script;
+    char    *latency_filename;
     SSL_CTX *ctx;
 } cfg;
 
@@ -46,6 +47,7 @@ static void usage() {
            "    -d, --duration    <T>  Duration of test           \n"
            "    -t, --threads     <N>  Number of threads to use   \n"
            "                                                      \n"
+           "    -f,                    Write latency data to file \n"
            "    -s, --script      <S>  Load Lua script file       \n"
            "    -H, --header      <H>  Add header to request      \n"
            "        --latency          Print latency statistics   \n"
@@ -168,7 +170,13 @@ int main(int argc, char **argv) {
     print_stats_header();
     print_stats("Latency", statistics.latency, format_time_us);
     print_stats("Req/Sec", statistics.requests, format_metric);
-    if (cfg.latency) print_stats_latency(statistics.latency);
+    if (cfg.latency) {
+        print_stats_latency(statistics.latency);
+        print_latency_histogram(statistics.latency);
+        if ( cfg.latency_filename != NULL ) {
+            save_raw_latency_data(statistics.latency, cfg.latency_filename);
+        }
+    } 
 
     char *runtime_msg = format_time_us(runtime_us);
 
@@ -466,7 +474,7 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
     cfg->duration    = 10;
     cfg->timeout     = SOCKET_TIMEOUT_MS;
 
-    while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:Lrv?", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:f:Lrv?", longopts, NULL)) != -1) {
         switch (c) {
             case 't':
                 if (scan_metric(optarg, &cfg->threads)) return -1;
@@ -489,6 +497,9 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
             case 'T':
                 if (scan_time(optarg, &cfg->timeout)) return -1;
                 cfg->timeout *= 1000;
+                break;
+            case 'f':
+                cfg->latency_filename = optarg;
                 break;
             case 'v':
                 printf("wrk %s [%s] ", VERSION, aeGetApiName());
@@ -559,4 +570,75 @@ static void print_stats_latency(stats *stats) {
         print_units(n, format_time_us, 10);
         printf("\n");
     }
+}
+
+static void save_raw_latency_data(stats *stats, char filename[80]) {
+    FILE *fp = fopen(filename, "w");
+    uint64_t i = 0;
+    fprintf(fp, "Latency/us ");
+    for ( i = stats -> min; i <= stats -> max; i ++ ) {
+        fprint(fp, "%d ", i);
+    }
+    fprint(fp, "\n");
+    fprintf(fp, "Count ");
+    for ( i = stats -> min; i <= stats -> max; i ++ ) {
+        fprint(fp, "%d ", stats -> data[i]);
+    }
+    fclose(fp);
+}
+
+static void print_latency_histogram(stats *stats) {
+    uint64_t latencies[] = { 5000, 10000, 15000, 50000, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 2000000, 5000000 };
+    uint64_t i = 0, j = 0, n = 0, start = 0, end = 0;
+
+    printf("  Latency Histogram\n");
+    printf("    Min latency = ");
+    print_units(stats -> min, format_time_us, 10);
+    printf(" Max latency = ");
+    print_units(stats -> max, format_time_us, 10);
+    printf("\n");
+    for ( start = 0; start < sizeof(latencies) / sizeof(latencies[0]); start++ ) {
+        if ( latencies[start] < stats -> min ) {
+            continue;
+        } else {
+            break;
+        }
+    }
+    for ( end = 0; end < sizeof(latencies) / sizeof(latencies[0]); end++ ) {
+        if ( latencies[end] < stats -> max ) {
+            continue;
+        } else {
+            break;
+        }
+    }
+    for ( i = start; i < end; i++ ) {
+        n = 0;
+        if ( i == start ) {
+            for ( j = stats -> min; j < latencies[start]; j++ ) {
+                n += stats -> data[j];
+            }
+            printf("    Latency ( ");
+            print_units(stats -> min, format_time_us, 10);
+            printf(", ");
+            print_units(latencies[start], format_time_us, 10);
+            printf("]: %d\n", n);
+        } else {
+            for ( j = latencies[i - 1]; j < latencies[i]; j ++) {
+                n += stats -> data[j];
+            }
+            printf("    Latency ( ");
+            print_units(latencies[i - 1], format_time_us, 10);
+            printf(", ");
+            print_units(latencies[i], format_time_us, 10);
+            printf("]: %d\n", n);
+        }
+    }
+    for ( j = latencies[i - 1]; j <= stats -> max;  j++ ) {
+        n += stats -> data[j];
+    }
+    printf("    Latency ( ");
+    print_units(latencies[i - 1], format_time_us, 10);
+    printf(", ");
+    print_units(stats -> max, format_time_us, 10);
+    printf("]: %d\n", n);
 }

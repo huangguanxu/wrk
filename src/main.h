@@ -50,5 +50,7 @@ static char *copy_url_part(char *, struct http_parser_url *, enum http_parser_ur
 static void print_stats_header();
 static void print_stats(char *, stats *, char *(*)(long double));
 static void print_stats_latency(stats *);
+static void print_latency_histogram(stats *);
+static void save_raw_latency_data(stats *, char *);
 
 #endif /* MAIN_H */
