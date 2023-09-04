@@ -577,12 +577,12 @@ static void save_raw_latency_data(stats *stats, char filename[80]) {
     uint64_t i = 0;
     fprintf(fp, "Latency/us ");
     for ( i = stats -> min; i <= stats -> max; i ++ ) {
-        fprint(fp, "%d ", i);
+        fprintf(fp, "%d ", i);
     }
-    fprint(fp, "\n");
+    fprintf(fp, "\n");
     fprintf(fp, "Count ");
     for ( i = stats -> min; i <= stats -> max; i ++ ) {
-        fprint(fp, "%d ", stats -> data[i]);
+        fprintf(fp, "%d ", stats -> data[i]);
     }
     fclose(fp);
 }
